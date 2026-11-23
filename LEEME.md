@@ -4,7 +4,8 @@ App del **Panel de Control – Unidad de Análisis** (Programa Académico de Bac
 
 - Pide la **misma contraseña** que el panel web (la app guarda solo su huella SHA-256, no la contraseña). Vuelve a pedirla tras 10 minutos en segundo plano o con «Bloquear».
 - Inicio con las tres secciones y sus 7 módulos: PAB, UChile, SAT (próximamente), EMS, Abandono, Carga Académica e Informes de Notas, más un acceso al panel web completo.
-- Cada módulo se abre en **Chrome**, con la sesión de Claude del teléfono (los módulos son páginas privadas de claude.ai: hay que haber iniciado sesión en Chrome con una cuenta que tenga acceso).
+- Cada módulo se abre **dentro de la app** (pestaña personalizada, con la sesión de Claude que tenga Chrome en el teléfono); × o Atrás vuelven al panel. Los módulos son páginas privadas de claude.ai: hay que haber iniciado sesión en Chrome con una cuenta que tenga acceso.
+- Ícono: el búho del asistente virtual.
 - Sin librerías externas; Android 7.0 o superior.
 
 `vista_previa.png` muestra cómo se ven las dos pantallas.

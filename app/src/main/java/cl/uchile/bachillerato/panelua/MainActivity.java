@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -31,6 +33,7 @@ import android.widget.Toast;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.List;
 
 /**
  * Panel de Control – Unidad de Análisis (Programa Académico de Bachillerato, U. de Chile).
@@ -236,8 +239,8 @@ public class MainActivity extends Activity {
             col.addView(tile(m), margins(-1, -2, 0, 0, 0, 10));
         }
 
-        TextView note = text("Los módulos se abren en Chrome con la sesión de Claude de este teléfono. "
-                + "Si un módulo pide iniciar sesión, usa la misma cuenta del panel.", 12, MUT, false);
+        TextView note = text("Los módulos se abren dentro de la app con la sesión de Claude de Chrome. "
+                + "Si un módulo pide iniciar sesión, usa la misma cuenta del panel. Para volver, toca × o Atrás.", 12, MUT, false);
         col.addView(note, margins(-1, -2, 0, 14, 0, 0));
         TextView foot = text("Creado por la Unidad de Análisis de Bachillerato\nUniversidad de Chile", 12, GRAY, false);
         foot.setGravity(Gravity.CENTER);
@@ -306,10 +309,21 @@ public class MainActivity extends Activity {
     }
 
     // ---------- Utilidades ----------
+    /** Abre el módulo dentro de la app (pestaña personalizada de Chrome: usa la sesión de Claude de Chrome
+     *  pero se muestra sobre la app y el botón Atrás vuelve al panel). */
     private void open(String url) {
         Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-        i.addCategory(Intent.CATEGORY_BROWSABLE);
-        i.setPackage("com.android.chrome"); // Chrome primero: allí está la sesión de Claude
+        String pkg = customTabsPackage();
+        if (pkg != null) {
+            Bundle b = new Bundle();
+            b.putBinder("android.support.customtabs.extra.SESSION", null);
+            i.putExtras(b);
+            i.putExtra("android.support.customtabs.extra.TOOLBAR_COLOR", PRI);
+            i.putExtra("android.support.customtabs.extra.TITLE_VISIBILITY", 1);
+            i.putExtra("android.support.customtabs.extra.ENABLE_URLBAR_HIDING", true);
+            i.putExtra("androidx.browser.customtabs.extra.SHARE_STATE", 2);
+            i.setPackage(pkg);
+        }
         try {
             startActivity(i);
         } catch (ActivityNotFoundException e) {
@@ -320,6 +334,15 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "No hay un navegador para abrir el módulo.", Toast.LENGTH_LONG).show();
             }
         }
+    }
+
+    /** Navegador con pestañas personalizadas (Chrome primero, porque ahí está la sesión de Claude). */
+    private String customTabsPackage() {
+        PackageManager pm = getPackageManager();
+        List<ResolveInfo> l = pm.queryIntentServices(new Intent("android.support.customtabs.action.CustomTabsService"), 0);
+        if (l == null || l.isEmpty()) return null;
+        for (ResolveInfo r : l) if ("com.android.chrome".equals(r.serviceInfo.packageName)) return "com.android.chrome";
+        return l.get(0).serviceInfo.packageName;
     }
 
     private static String sha256(String s) {
