@@ -2,6 +2,7 @@ package cl.uchile.bachillerato.panelua;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -315,9 +316,8 @@ public class MainActivity extends Activity {
 
         if (vis == 0) col.addView(text("Todavía no tienes módulos asignados. Pídele acceso al creador de la app.", 14, MUT, false), margins(-1, -2, 0, 22, 0, 0));
         if (permitidos == null) col.addView(text("Eres el creador: ves todos los módulos. Cada persona entra con su código de acceso y solo ve los módulos que le asignaste.", 12, MUT, false), margins(-1, -2, 0, 14, 0, 0));
-        TextView note = text("Los módulos se abren dentro de la app. La primera vez pedirán iniciar sesión en Claude: "
-                + "usa tu correo y el código que te llega por email (el botón de Google no funciona dentro de apps). "
-                + "La sesión queda guardada. Para volver al panel, toca ← o Atrás.", 12, MUT, false);
+        TextView note = text("Los módulos se abren en una pestaña integrada, dentro de la app, con la sesión de Claude del navegador del teléfono. "
+                + "La primera vez puede pedir iniciar sesión en Claude. Para volver al panel, toca × o Atrás.", 12, MUT, false);
         col.addView(note, margins(-1, -2, 0, 14, 0, 0));
         TextView foot = text("Creado por la Unidad de Análisis de Bachillerato\nUniversidad de Chile", 12, GRAY, false);
         foot.setGravity(Gravity.CENTER);
@@ -389,12 +389,24 @@ public class MainActivity extends Activity {
     }
 
     // ---------- Utilidades ----------
-    /** Abre el módulo en el navegador propio de la app (sin Chrome). */
+    /** Abre el módulo en la pestaña integrada (se muestra dentro de la app, con el motor y la sesión del navegador del
+     *  teléfono). claude.ai no muestra los módulos en el navegador interno de las apps, por eso este es el camino principal. */
     private void open(String url, String title) {
-        Intent i = new Intent(this, WebActivity.class);
-        i.putExtra("url", url);
-        i.putExtra("title", title);
-        startActivity(i);
+        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        Bundle b = new Bundle();
+        b.putBinder("android.support.customtabs.extra.SESSION", null);
+        i.putExtras(b);
+        i.putExtra("android.support.customtabs.extra.TOOLBAR_COLOR", PRI);
+        i.putExtra("android.support.customtabs.extra.TITLE_VISIBILITY", 1);
+        i.putExtra("androidx.browser.customtabs.extra.SHARE_STATE", 2);
+        try {
+            startActivity(i);
+        } catch (ActivityNotFoundException e) {
+            Intent w = new Intent(this, WebActivity.class); // sin navegador en el teléfono: navegador interno
+            w.putExtra("url", url);
+            w.putExtra("title", title);
+            startActivity(w);
+        }
     }
 
     private static String sha256(String s) {
