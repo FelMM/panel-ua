@@ -1,0 +1,4 @@
+{
+  "nota": "Estado de los módulos en la app (true = activado). Debe coincidir con los interruptores del panel web.",
+  "estado": {"pab": true, "uch": false, "sat": false, "enc1": true, "enc2": true, "enc3": true, "notas": true}
+}

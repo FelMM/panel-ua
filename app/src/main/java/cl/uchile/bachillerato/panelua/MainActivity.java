@@ -30,9 +30,15 @@ import android.widget.Toast;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+
+import org.json.JSONObject;
 
 /**
- * Panel de Control – Unidad de Análisis (Programa Académico de Bachillerato, U. de Chile).
+ * UA PAB — Panel de Control de la Unidad de Análisis (Programa Académico de Bachillerato, U. de Chile).
  * Pide la misma contraseña que el panel web y abre cada módulo en Chrome, con la sesión de Claude del teléfono.
  */
 public class MainActivity extends Activity {
@@ -48,16 +54,21 @@ public class MainActivity extends Activity {
             PLUM = Color.parseColor("#6B4660"), PLUM2 = Color.parseColor("#F1EBF0"), CORAL = Color.parseColor("#EF5866"),
             GRAY = Color.parseColor("#8A8590");
 
-    /** Módulos: sección, rótulo, título, descripción, sigla del ícono, url (null = próximamente). */
+    /** Módulos: id (el mismo del panel web), sección, rótulo, título, descripción, sigla del ícono, url (null = próximamente). */
     private static final String[][] MODS = {
-            {"Seguimiento de estudiantes", "Módulo 1", "Programa Académico de Bachillerato (PAB)", "Plataforma de seguimiento de estudiantes del PAB.", "PAB", "https://claude.ai/artifact/PSe3HVvBY7xTNHBym6VB9X"},
-            {"Seguimiento de estudiantes", "Módulo 2", "Universidad de Chile (UChile)", "Seguimiento y comparación de estudiantes PAB con sus pares de carrera.", "UCh", "https://claude.ai/artifact/3QywS8JZiiEmsqgsy3RCdS"},
-            {"Seguimiento de estudiantes", "Módulo 3", "Sistema de Alerta Temprana (SAT)", "Identificación oportuna de estudiantes en riesgo académico.", "SAT", null},
-            {"Encuestas aplicadas", "Encuesta 1", "Encuesta Docente de Medio Semestre (EMS)", "Resultados de evaluación Docente de Medio Semestre.", "EMS", "https://claude.ai/artifact/EkmzeB95xRwn9QYqUFc59g"},
-            {"Encuestas aplicadas", "Encuesta 2", "Encuesta de Abandono Estudiantil", "Análisis de causa y perfiles de abandono en el PAB.", "AB", "https://claude.ai/artifact/RzKbTFjz2VfkA9piMZXhiK"},
-            {"Encuestas aplicadas", "Encuesta 3", "Encuesta de Carga Académica", "Percepción de los estudiantes y docentes sobre la carga académica de las asignaturas.", "CA", "https://claude.ai/artifact/6XgHh4ajC7PibXdPk8KcBF"},
-            {"Informes de Notas", "Módulo", "Informes de Notas", "Reportes de calificaciones y rendimiento académico de los estudiantes.", "N", "https://claude.ai/artifact/HNPAVKqummi8N1wCZKxw2m"},
+            {"pab", "Seguimiento de estudiantes", "Módulo 1", "Programa Académico de Bachillerato (PAB)", "Plataforma de seguimiento de estudiantes del PAB.", "PAB", "https://claude.ai/artifact/PSe3HVvBY7xTNHBym6VB9X"},
+            {"uch", "Seguimiento de estudiantes", "Módulo 2", "Universidad de Chile (UChile)", "Seguimiento y comparación de estudiantes PAB con sus pares de carrera.", "UCh", "https://claude.ai/artifact/3QywS8JZiiEmsqgsy3RCdS"},
+            {"sat", "Seguimiento de estudiantes", "Módulo 3", "Sistema de Alerta Temprana (SAT)", "Identificación oportuna de estudiantes en riesgo académico.", "SAT", null},
+            {"enc1", "Encuestas aplicadas", "Encuesta 1", "Encuesta Docente de Medio Semestre (EMS)", "Resultados de evaluación Docente de Medio Semestre.", "EMS", "https://claude.ai/artifact/EkmzeB95xRwn9QYqUFc59g"},
+            {"enc2", "Encuestas aplicadas", "Encuesta 2", "Encuesta de Abandono Estudiantil", "Análisis de causa y perfiles de abandono en el PAB.", "AB", "https://claude.ai/artifact/RzKbTFjz2VfkA9piMZXhiK"},
+            {"enc3", "Encuestas aplicadas", "Encuesta 3", "Encuesta de Carga Académica", "Percepción de los estudiantes y docentes sobre la carga académica de las asignaturas.", "CA", "https://claude.ai/artifact/6XgHh4ajC7PibXdPk8KcBF"},
+            {"notas", "Informes de Notas", "Módulo", "Informes de Notas", "Reportes de calificaciones y rendimiento académico de los estudiantes.", "N", "https://claude.ai/artifact/HNPAVKqummi8N1wCZKxw2m"},
     };
+
+    /** Estado de cada módulo (activado/desactivado), igual al del panel web. Se actualiza desde ESTADOS al abrir la app. */
+    private static final String ESTADOS = "https://raw.githubusercontent.com/FelMM/panel-ua/main/modulos.json";
+    private static final String DEF = "{\"pab\":true,\"uch\":false,\"sat\":false,\"enc1\":true,\"enc2\":true,\"enc3\":true,\"notas\":true}";
+    private JSONObject estado;
 
     private boolean unlocked;
     private long stoppedAt;
@@ -82,7 +93,9 @@ public class MainActivity extends Activity {
             return ins;
         });
         setContentView(root);
+        estado = parse(getSharedPreferences("ua", MODE_PRIVATE).getString("estado", DEF));
         render();
+        refreshEstado();
     }
 
     @Override
@@ -104,6 +117,39 @@ public class MainActivity extends Activity {
             unlocked = false;
             render();
         }
+    }
+
+    private static JSONObject parse(String s) {
+        try { return new JSONObject(s); } catch (Exception e) { try { return new JSONObject(DEF); } catch (Exception e2) { return new JSONObject(); } }
+    }
+
+    private boolean activo(String id) {
+        return estado.optBoolean(id, false);
+    }
+
+    /** Descarga el estado vigente de los módulos (sin bloquear la pantalla); si cambió, redibuja. */
+    private void refreshEstado() {
+        new Thread(() -> {
+            try {
+                HttpURLConnection c = (HttpURLConnection) new URL(ESTADOS + "?t=" + System.currentTimeMillis()).openConnection();
+                c.setConnectTimeout(6000);
+                c.setReadTimeout(6000);
+                c.setUseCaches(false);
+                if (c.getResponseCode() != 200) return;
+                StringBuilder sb = new StringBuilder();
+                try (BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8))) {
+                    String l;
+                    while ((l = r.readLine()) != null) sb.append(l);
+                }
+                JSONObject j = new JSONObject(sb.toString());
+                JSONObject e = j.has("estado") ? j.getJSONObject("estado") : j;
+                if (e.toString().equals(estado.toString())) return;
+                getSharedPreferences("ua", MODE_PRIVATE).edit().putString("estado", e.toString()).apply();
+                runOnUiThread(() -> { estado = e; if (unlocked) render(); });
+            } catch (Exception ignored) {
+                // sin conexión: se usa el último estado guardado
+            }
+        }).start();
     }
 
     private void render() {
@@ -133,7 +179,7 @@ public class MainActivity extends Activity {
         logo.setAdjustViewBounds(true);
         card.addView(logo, new LinearLayout.LayoutParams(dp(96), -2));
 
-        TextView t = text("Panel de Control", 22, INK, true);
+        TextView t = text("UA PAB", 22, INK, true);
         t.setGravity(Gravity.CENTER);
         card.addView(t, margins(-1, -2, 0, 14, 0, 2));
         TextView s = text("Unidad de Análisis · Programa Académico de Bachillerato", 13, MUT, false);
@@ -204,8 +250,8 @@ public class MainActivity extends Activity {
         head.addView(logo, new LinearLayout.LayoutParams(dp(52), -2));
         LinearLayout ht = column();
         ht.setPadding(dp(12), 0, 0, 0);
-        ht.addView(text("Panel de Control", 22, INK, true));
-        ht.addView(text("Unidad de Análisis · Bachillerato", 13, MUT, false));
+        ht.addView(text("UA PAB", 22, INK, true));
+        ht.addView(text("Unidad de Análisis · Panel de Control", 13, MUT, false));
         head.addView(ht, new LinearLayout.LayoutParams(0, -2, 1));
         TextView salir = text("Bloquear", 13, PRI, true);
         salir.setPadding(dp(10), dp(8), dp(4), dp(8));
@@ -226,10 +272,10 @@ public class MainActivity extends Activity {
 
         String sec = null;
         for (String[] m : MODS) {
-            if (!m[0].equals(sec)) {
-                sec = m[0];
+            if (!m[1].equals(sec)) {
+                sec = m[1];
                 int cnt = 0;
-                for (String[] x : MODS) if (x[0].equals(sec)) cnt++;
+                for (String[] x : MODS) if (x[1].equals(sec)) cnt++;
                 col.addView(sectionHeader(sec, cnt, accent(sec)), margins(-1, -2, 0, 22, 0, 8));
             }
             col.addView(tile(m), margins(-1, -2, 0, 0, 0, 10));
@@ -262,37 +308,40 @@ public class MainActivity extends Activity {
     }
 
     private View tile(String[] m) {
-        final String url = m[5];
-        int ac = accent(m[0]), ac2 = accent2(m[0]);
+        final boolean on = m[6] != null && activo(m[0]);
+        final String url = on ? m[6] : null;
+        final String estadoTxt = m[6] == null ? "Próximamente" : "No disponible";
+        int ac = accent(m[1]), ac2 = accent2(m[1]);
         LinearLayout card = column();
         card.setPadding(dp(16), dp(14), dp(16), dp(14));
         card.setBackground(round(CARD, 14, LINE));
 
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView ic = text(m[4], m[4].length() > 2 ? 13 : 15, url == null ? GRAY : ac, true);
+        TextView ic = text(m[5], m[5].length() > 2 ? 13 : 15, url == null ? GRAY : ac, true);
         ic.setGravity(Gravity.CENTER);
         ic.setBackground(round(url == null ? BG : ac2, 12, 0));
         top.addView(ic, new LinearLayout.LayoutParams(dp(44), dp(44)));
         LinearLayout tt = column();
         tt.setPadding(dp(12), 0, 0, 0);
-        TextView num = text(m[1].toUpperCase(), 11, GRAY, true);
+        TextView num = text(m[2].toUpperCase(), 11, GRAY, true);
         num.setLetterSpacing(0.06f);
         tt.addView(num);
-        tt.addView(text(m[2], 16, INK, true));
+        tt.addView(text(m[3], 16, INK, true));
         top.addView(tt, new LinearLayout.LayoutParams(0, -2, 1));
         card.addView(top);
 
-        TextView d = text(m[3], 13, MUT, false);
+        TextView d = text(m[4], 13, MUT, false);
         card.addView(d, margins(-1, -2, 0, 10, 0, 10));
 
-        TextView go = text(url == null ? "Próximamente" : "Entrar →", 14, url == null ? GRAY : ac, true);
+        TextView go = text(url == null ? estadoTxt : "Entrar →", 14, url == null ? GRAY : ac, true);
         card.addView(go);
         if (url != null) {
             card.setClickable(true);
-            card.setOnClickListener(v -> open(url, m[2]));
+            card.setOnClickListener(v -> open(url, m[3]));
         } else {
             card.setAlpha(0.75f);
+            card.setOnClickListener(v -> Toast.makeText(this, m[3] + ": " + (m[6] == null ? "módulo en preparación." : "no disponible por ahora."), Toast.LENGTH_SHORT).show());
         }
         return card;
     }

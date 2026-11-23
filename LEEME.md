@@ -1,4 +1,4 @@
-# Panel UA — app Android
+# UA PAB — app Android
 
 App del **Panel de Control – Unidad de Análisis** (Programa Académico de Bachillerato, U. de Chile).
 
@@ -26,6 +26,7 @@ App del **Panel de Control – Unidad de Análisis** (Programa Académico de Bac
 Copiar el `.apk` al teléfono y abrirlo. Android pedirá permitir «instalar apps desconocidas» para el administrador de archivos o el navegador; aceptar solo para esa instalación.
 
 ## Cambios frecuentes
+- **Activar o desactivar un módulo en la app:** editar `modulos.json` en este repositorio (true/false, mismos nombres que los interruptores del panel web: pab, uch, sat, enc1, enc2, enc3, notas). La app lo lee al abrirse; no hace falta reinstalarla. Un módulo desactivado se ve como «No disponible»; uno sin enlace, como «Próximamente».
 - **Módulos o enlaces:** arreglo `MODS` al inicio de `MainActivity.java` (sección, rótulo, título, descripción, sigla, enlace; `null` = «Próximamente»).
 - **Contraseña:** si cambia la del panel web, reemplazar `HASH` por el SHA-256 de la nueva (en una terminal: `printf '%s' 'nueva-clave' | sha256sum`).
 - Al publicar una versión nueva, subir `versionCode` en `app/build.gradle`.
