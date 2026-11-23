@@ -64,12 +64,15 @@ public class WebActivity extends Activity {
     private ProgressBar bar;
     private TextView title;
     private ValueCallback<Uri[]> fileCb;
+    private String target;
+    private boolean sawLogin;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         String url = getIntent().getStringExtra("url");
+        target = url;
         String name = getIntent().getStringExtra("title");
 
         LinearLayout root = new LinearLayout(this);
@@ -103,8 +106,11 @@ public class WebActivity extends Activity {
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         top.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         TextView reload = button("⟳");
-        reload.setOnClickListener(v -> web.reload());
+        reload.setOnClickListener(v -> web.loadUrl(target));
         top.addView(reload, new LinearLayout.LayoutParams(dp(48), dp(52)));
+        TextView ext = button("⋮");
+        ext.setOnClickListener(v -> abrirSistema());
+        top.addView(ext, new LinearLayout.LayoutParams(dp(40), dp(52)));
         root.addView(top, new LinearLayout.LayoutParams(-1, -2));
 
         bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -153,6 +159,11 @@ public class WebActivity extends Activity {
             }
 
             @Override
+            public void doUpdateVisitedHistory(WebView view, String u, boolean isReload) {
+                volverAlModulo(view, u); // también cubre cambios de página internos de claude.ai
+            }
+
+            @Override
             public void onPageStarted(WebView view, String u, Bitmap fav) {
                 bar.setVisibility(View.VISIBLE);
             }
@@ -160,6 +171,7 @@ public class WebActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String u) {
                 bar.setVisibility(View.GONE);
+                if (volverAlModulo(view, u)) return;
                 if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) view.evaluateJavascript(HOOK, null);
                 CookieManager.getInstance().flush();
             }
@@ -285,6 +297,38 @@ public class WebActivity extends Activity {
         @JavascriptInterface
         public void error(String msg) {
             runOnUiThread(() -> Toast.makeText(WebActivity.this, "No se pudo descargar el archivo.", Toast.LENGTH_LONG).show());
+        }
+    }
+
+    /** Tras iniciar sesión, claude.ai lleva al inicio del chat: se vuelve al módulo pedido. */
+    private boolean volverAlModulo(WebView view, String u) {
+        Uri x = Uri.parse(u);
+        String path = x.getPath() == null ? "" : x.getPath();
+        if (!"claude.ai".equals(x.getHost())) return false;
+        if (path.startsWith("/login") || path.contains("magic") || path.startsWith("/auth") || path.contains("verify") || path.startsWith("/onboarding")) {
+            sawLogin = true;
+            return false;
+        }
+        if (sawLogin && !path.startsWith("/artifact")) {
+            sawLogin = false;
+            view.post(() -> view.loadUrl(target));
+            return true;
+        }
+        return false;
+    }
+
+    /** Alternativa si un módulo no carga: abrirlo en la pestaña integrada del navegador del teléfono. */
+    private void abrirSistema() {
+        String u = web.getUrl() != null && web.getUrl().contains("/artifact/") ? web.getUrl() : target;
+        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(u));
+        Bundle b = new Bundle();
+        b.putBinder("android.support.customtabs.extra.SESSION", null);
+        i.putExtras(b);
+        i.putExtra("android.support.customtabs.extra.TOOLBAR_COLOR", PRI);
+        try {
+            startActivity(i);
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, "No hay otro navegador en el teléfono.", Toast.LENGTH_LONG).show();
         }
     }
 
