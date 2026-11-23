@@ -35,6 +35,7 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
@@ -65,12 +66,16 @@ public class MainActivity extends Activity {
             {"notas", "Informes de Notas", "Módulo", "Informes de Notas", "Reportes de calificaciones y rendimiento académico de los estudiantes.", "N", "https://claude.ai/artifact/HNPAVKqummi8N1wCZKxw2m"},
     };
 
-    /** Estado de cada módulo (activado/desactivado), igual al del panel web. Se actualiza desde ESTADOS al abrir la app. */
-    private static final String ESTADOS = "https://raw.githubusercontent.com/FelMM/panel-ua/main/modulos.json";
-    private static final String DEF = "{\"pab\":true,\"uch\":false,\"sat\":false,\"enc1\":true,\"enc2\":true,\"enc3\":true,\"notas\":true}";
-    private JSONObject estado;
+    /** Configuración publicada en el repositorio (modulos.json): estado de cada módulo (igual que los interruptores del
+     *  panel web) y accesos por persona (huella SHA-256 del código personal → módulos). Se actualiza al abrir la app. */
+    private static final String CONFIG = "https://raw.githubusercontent.com/FelMM/panel-ua/main/modulos.json";
+    private static final String DEF = "{\"estado\":{\"pab\":true,\"uch\":false,\"sat\":false,\"enc1\":true,\"enc2\":true,\"enc3\":true,\"notas\":true},\"accesos\":{}}";
+    private JSONObject config;
 
     private boolean unlocked;
+    /** null = creador (todos los módulos); si no, módulos que el creador le asignó a la persona. */
+    private String[] permitidos;
+    private String quien = "";
     private long stoppedAt;
     private FrameLayout root;
 
@@ -78,6 +83,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         unlocked = state != null && state.getBoolean("unlocked", false);
+        if (state != null) { permitidos = state.getStringArray("permitidos"); quien = state.getString("quien", ""); }
         root = new FrameLayout(this);
         root.setBackgroundColor(BG);
         root.setOnApplyWindowInsetsListener((v, ins) -> {
@@ -93,7 +99,7 @@ public class MainActivity extends Activity {
             return ins;
         });
         setContentView(root);
-        estado = parse(getSharedPreferences("ua", MODE_PRIVATE).getString("estado", DEF));
+        config = parse(getSharedPreferences("ua", MODE_PRIVATE).getString("config", DEF));
         render();
         refreshEstado();
     }
@@ -102,6 +108,8 @@ public class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
         out.putBoolean("unlocked", unlocked);
+        out.putStringArray("permitidos", permitidos);
+        out.putString("quien", quien);
     }
 
     @Override
@@ -124,14 +132,35 @@ public class MainActivity extends Activity {
     }
 
     private boolean activo(String id) {
-        return estado.optBoolean(id, false);
+        JSONObject e = config.optJSONObject("estado");
+        return e != null && e.optBoolean(id, false);
+    }
+
+    private boolean permitido(String id) {
+        if (permitidos == null) return true;
+        for (String x : permitidos) if (x.equals(id)) return true;
+        return false;
+    }
+
+    /** Contraseña del panel = creador (todo). Código personal = solo los módulos que el creador le dio. */
+    private boolean ingresar(String txt) {
+        if (HASH.equals(sha256(txt.trim()))) { permitidos = null; quien = "Creador"; return true; }
+        String code = txt.replaceAll("[\\s-]", "").toUpperCase();
+        JSONObject acc = config.optJSONObject("accesos");
+        JSONObject a = acc == null || code.isEmpty() ? null : acc.optJSONObject(sha256("UAPAB:" + code));
+        if (a == null) return false;
+        JSONArray m = a.optJSONArray("m");
+        permitidos = new String[m == null ? 0 : m.length()];
+        for (int i = 0; i < permitidos.length; i++) permitidos[i] = m.optString(i);
+        quien = a.optString("n", "");
+        return true;
     }
 
     /** Descarga el estado vigente de los módulos (sin bloquear la pantalla); si cambió, redibuja. */
     private void refreshEstado() {
         new Thread(() -> {
             try {
-                HttpURLConnection c = (HttpURLConnection) new URL(ESTADOS + "?t=" + System.currentTimeMillis()).openConnection();
+                HttpURLConnection c = (HttpURLConnection) new URL(CONFIG + "?t=" + System.currentTimeMillis()).openConnection();
                 c.setConnectTimeout(6000);
                 c.setReadTimeout(6000);
                 c.setUseCaches(false);
@@ -142,10 +171,9 @@ public class MainActivity extends Activity {
                     while ((l = r.readLine()) != null) sb.append(l);
                 }
                 JSONObject j = new JSONObject(sb.toString());
-                JSONObject e = j.has("estado") ? j.getJSONObject("estado") : j;
-                if (e.toString().equals(estado.toString())) return;
-                getSharedPreferences("ua", MODE_PRIVATE).edit().putString("estado", e.toString()).apply();
-                runOnUiThread(() -> { estado = e; if (unlocked) render(); });
+                if (!j.has("estado") || j.toString().equals(config.toString())) return;
+                getSharedPreferences("ua", MODE_PRIVATE).edit().putString("config", j.toString()).apply();
+                runOnUiThread(() -> { config = j; if (unlocked) render(); });
             } catch (Exception ignored) {
                 // sin conexión: se usa el último estado guardado
             }
@@ -187,7 +215,7 @@ public class MainActivity extends Activity {
         card.addView(s, margins(-1, -2, 0, 0, 0, 18));
 
         EditText pw = new EditText(this);
-        pw.setHint("Contraseña");
+        pw.setHint("Contraseña o código de acceso");
         pw.setSingleLine(true);
         pw.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         pw.setImeOptions(EditorInfo.IME_ACTION_GO);
@@ -213,12 +241,13 @@ public class MainActivity extends Activity {
         card.addView(go, margins(-1, dp(48), 0, 10, 0, 0));
 
         Runnable check = () -> {
-            if (HASH.equals(sha256(pw.getText().toString().trim()))) {
+            if (ingresar(pw.getText().toString())) {
                 hideKeyboard(pw);
                 unlocked = true;
                 render();
             } else {
-                err.setText("Contraseña incorrecta.");
+                err.setText("Contraseña o código incorrecto. Si te dieron un código hace poco, revisa tu conexión y vuelve a intentar.");
+                refreshEstado();
                 pw.selectAll();
             }
         };
@@ -251,11 +280,11 @@ public class MainActivity extends Activity {
         LinearLayout ht = column();
         ht.setPadding(dp(12), 0, 0, 0);
         ht.addView(text("UA PAB", 22, INK, true));
-        ht.addView(text("Unidad de Análisis · Panel de Control", 13, MUT, false));
+        ht.addView(text(permitidos == null ? "Unidad de Análisis · Panel de Control" : (quien.isEmpty() ? "Tus módulos" : "Hola, " + quien), 13, MUT, false));
         head.addView(ht, new LinearLayout.LayoutParams(0, -2, 1));
         TextView salir = text("Bloquear", 13, PRI, true);
         salir.setPadding(dp(10), dp(8), dp(4), dp(8));
-        salir.setOnClickListener(v -> { unlocked = false; render(); });
+        salir.setOnClickListener(v -> { unlocked = false; permitidos = null; quien = ""; render(); });
         head.addView(salir);
         col.addView(head);
 
@@ -268,19 +297,24 @@ public class MainActivity extends Activity {
         web.addView(wt, new LinearLayout.LayoutParams(0, -2, 1));
         web.addView(text("→", 16, PRI, true));
         web.setOnClickListener(v -> open(PANEL, "Panel de Control"));
-        col.addView(web, margins(-1, -2, 0, 16, 0, 4));
+        if (permitidos == null) col.addView(web, margins(-1, -2, 0, 16, 0, 4));
 
         String sec = null;
+        int vis = 0;
         for (String[] m : MODS) {
+            if (!permitido(m[0])) continue;
+            vis++;
             if (!m[1].equals(sec)) {
                 sec = m[1];
                 int cnt = 0;
-                for (String[] x : MODS) if (x[1].equals(sec)) cnt++;
+                for (String[] x : MODS) if (x[1].equals(sec) && permitido(x[0])) cnt++;
                 col.addView(sectionHeader(sec, cnt, accent(sec)), margins(-1, -2, 0, 22, 0, 8));
             }
             col.addView(tile(m), margins(-1, -2, 0, 0, 0, 10));
         }
 
+        if (vis == 0) col.addView(text("Todavía no tienes módulos asignados. Pídele acceso al creador de la app.", 14, MUT, false), margins(-1, -2, 0, 22, 0, 0));
+        if (permitidos == null) col.addView(text("Eres el creador: ves todos los módulos. Cada persona entra con su código de acceso y solo ve los módulos que le asignaste.", 12, MUT, false), margins(-1, -2, 0, 14, 0, 0));
         TextView note = text("Los módulos se abren dentro de la app. La primera vez pedirán iniciar sesión en Claude: "
                 + "usa tu correo y el código que te llega por email (el botón de Google no funciona dentro de apps). "
                 + "La sesión queda guardada. Para volver al panel, toca ← o Atrás.", 12, MUT, false);

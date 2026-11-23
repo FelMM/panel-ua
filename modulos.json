@@ -1,4 +1,47 @@
 {
-  "nota": "Estado de los módulos en la app (true = activado). Debe coincidir con los interruptores del panel web.",
-  "estado": {"pab": true, "uch": false, "sat": false, "enc1": true, "enc2": true, "enc3": true, "notas": true}
+ "nota": "Configuración de la app UA PAB. estado: módulos activados (igual que los interruptores del panel web). accesos: huella de cada código personal → módulos asignados por el creador (los códigos y correos NO se publican).",
+ "estado": {
+  "pab": true,
+  "uch": false,
+  "sat": false,
+  "enc1": true,
+  "enc2": true,
+  "enc3": true,
+  "notas": true
+ },
+ "accesos": {
+  "d43851b157b1aaf5cc604b61891006dd71b8dda5bb1384b4b3c35212b812bb4c": {
+   "m": [
+    "pab"
+   ]
+  },
+  "acaf33c5bcd4f5fe1b35f63f379dc4bf6d68876b759c7b5c7b6e68b59fe864ae": {
+   "m": [
+    "pab"
+   ]
+  },
+  "9eafa2aa38e31e0b0e7e7c2a72fc293cdc0957dc89c5c198e94d7209c5f1224e": {
+   "m": [
+    "pab"
+   ]
+  },
+  "583f5029078efa9fbcf7f0285ff4cecc2b3a37411c6719b1766eacc8e34c3672": {
+   "m": [
+    "enc1",
+    "notas"
+   ]
+  },
+  "3e3a8575a657e978e9c2840bc5e33c05a956468b5fdb8263ce1555b78ec83d76": {
+   "m": [
+    "enc1",
+    "notas"
+   ]
+  },
+  "0f7d82aba4faf25d73767d565766888acd3cff6141af38dde926471a82eeb30b": {
+   "m": [
+    "enc1",
+    "notas"
+   ]
+  }
+ }
 }

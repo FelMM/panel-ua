@@ -2,6 +2,7 @@
 
 App del **Panel de Control – Unidad de Análisis** (Programa Académico de Bachillerato, U. de Chile).
 
+- **Accesos:** el creador entra con la **contraseña del panel** y ve todos los módulos. Cada otra persona entra con su **código de acceso personal** y solo ve los módulos que el creador le asignó (lista en `modulos.json` → `accesos`, guardada como huella: los códigos y correos no se publican). Para que el módulo abra, además debe estar compartido con esa persona en claude.ai.
 - Pide la **misma contraseña** que el panel web (la app guarda solo su huella SHA-256, no la contraseña). Vuelve a pedirla tras 10 minutos en segundo plano o con «Bloquear».
 - Inicio con las tres secciones y sus 7 módulos: PAB, UChile, SAT (próximamente), EMS, Abandono, Carga Académica e Informes de Notas, más un acceso al panel web completo.
 - Cada módulo se abre **dentro de la app**, en su propio navegador (no necesita Chrome). La primera vez pide iniciar sesión en Claude con correo y código por email (el ingreso con Google no funciona dentro de apps); la sesión queda guardada. Las descargas (PDF, Excel) quedan en Descargas/Panel UA.
